@@ -3,7 +3,8 @@ from PIL import Image
 import math
 import numpy as np
 import argparse
-
+from data_generator import CIFAR10Dataset,get_test_adv_loader
+from torch.utils.data import  DataLoader
 
 def load_quantization_table(component, qs=40):
     # Quantization Table for JPEG Standard: https://tools.ietf.org/html/rfc2435
@@ -107,22 +108,75 @@ def jpeg(npmat, component='jpeg', factor=50):
     npmat_decode = decode(cnt, coeff, component, factor)
     return npmat_decode
 
+def feature_distillation(image):
+    # h5 -> *255 -> feature distillation -> /255 -> h5
+    '''
+    :param image: np.array | [BATCH_SIZE,C,H,W] | [0,1]
+    :return: np.array | [BATCH_SIZE,C,H,W] | [0,1]
+    '''
+    res = []
+    for i in range(image.shape[0]):
+        image_npmat = np.transpose(np.array(image[i], dtype='float'),[2,0,1]) * 255
+        image_uint8 = (image_npmat).astype('uint8')
+        ycbcr = Image.fromarray(image_uint8, 'RGB').convert('YCbCr')
+        npmat = np.array(ycbcr)
+        npmat_jpeg = jpeg(npmat, component=args.component, factor=args.factor)
+        image_obj = Image.fromarray(npmat_jpeg, 'YCbCr').convert('RGB')
+        image_obj = np.asarray(image_obj) / 255
+        res.append(image_obj)
+    res = np.asarray(res)
+    print ("res.shape:{}".format(res.shape))
+    res = np.reshape(res,[-1,3,32,32])
+    return res
+
+
+
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--image', type=str, default='fig/lena.png', help='image name')
     parser.add_argument('--component', type=str, default='jpeg',
                         help='dnn-oriented or jpeg standard')
     parser.add_argument('--factor', type=int, default=50, help='compression factor')
+    parser.add_argument("--attack_method",type=str,choices=["PGD","FGSM","STA","Momentum"])
+    parser.add_argument("--epsilon",type=float,default=8/255)
     args = parser.parse_args()
-    
-    image = Image.open(args.image)
-    image_npmat = np.array(image, dtype='float')
-    image_uint8 = (image_npmat).astype('uint8')
-    ycbcr = Image.fromarray(image_uint8, 'RGB').convert('YCbCr')
-    npmat = np.array(ycbcr)
-    npmat_jpeg = jpeg(npmat, component=args.component, factor=args.factor)
-    image_obj = Image.fromarray(npmat_jpeg, 'YCbCr').convert('RGB')
-    image_obj.save('lena_jpeg.jpg', 'JPEG')
+
+    test_file_dir = os.path.join("data",args.attack_method,args.epsilon)
+    if not os.path.exists(test_file_dir):
+        os.mkdir(test_file_dir)
+    test_file_path =  os.path.join("data",args.attack_method,args.epsilon,"test_denoiser.h5")
+    if os.path.exists(test_file_path):
+        print("%s already exists! = =" % test_file_path)
+        h5_store = h5py.File(test_file_path,"r")
+        denoised_data=h5_store["data"][:]
+        target_ = h5_store["target"][:]
+        h5_store.close()
+    else:
+        h5_store = h5py.File(test_file_path,"w")
+        # generate (denoised_data,target)
+        '''
+        h5 -> *255 -> feature distillation -> /255 -> h5
+        '''
+        denoised_data = []
+        target_ = []
+        testLoader = get_test_adv_loader(attack_method = args.attack_method,epsilon=args.epsilon)
+        for batch_idx,(data,target) in enumearte(testLoader):
+            denoised_data.append(feature_distillation(data))
+            target_.append(target)
+        denoised_data = np.reshape(denoised_data,[-1,3,32,32])
+        target_ = np.reshape(target_,[-1])
+        h5_stroe.create_dataset('data',data=denoised_data)
+        h5_store.create_dataset('target',data=target_)
+        h5_store.close()
+    denoised_data = torch.from_numpy(denoised_data)
+    target_ = torch.from_numpy(target_)
+
+    test_denoised_dataset=CIFAR10Dataset(denoised_data,target_)
+    del denoised_data,target_
+    return DataLoader(dataset=test_denoised_dataset,drop_last=True,batch_size=50,shuffle=False)
+
 
 if __name__ == '__main__':
     main()    
