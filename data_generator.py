@@ -18,7 +18,6 @@
 
 # no need to run this code separately
 
-
 import glob
 import cv2
 import os
@@ -31,11 +30,175 @@ import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10
 import matplotlib.pyplot as plt
 import h5py # 通过h5py读写hdf5文件
+import argparse
+from networks import  *
+
+from advertorch.context import ctx_noparamgrad_and_eval
+from advertorch.test_utils import LeNet5
+from advertorch_examples.utils import get_mnist_train_loader
+from advertorch_examples.utils import get_mnist_test_loader
+from advertorch_examples.utils import TRAINED_MODEL_PATH
+from advertorch.attacks import CarliniWagnerL2Attack,GradientSignAttack,L2PGDAttack,SpatialTransformAttack,JacobianSaliencyMapAttack,MomentumIterativeAttack
+
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 
 patch_size, stride = 40, 10
 aug_times = 1
 scales = [1, 0.9, 0.8, 0.7]
 batch_size = 128
+
+# Return network & file name
+def getNetwork(args):
+    if (args.net_type == 'lenet'):
+        net = LeNet(args.num_classes)
+        file_name = 'lenet'
+    elif (args.net_type == 'vggnet'):
+        net = VGG(args.depth, args.num_classes)
+        file_name = 'vgg-'+str(args.depth)
+    elif (args.net_type == 'resnet'):
+        net = ResNet(args.depth, args.num_classes)
+        file_name = 'resnet-'+str(args.depth)
+    elif (args.net_type == 'wide-resnet'):
+        net = Wide_ResNet(args.depth, args.widen_factor, args.dropout, args.num_classes)
+        file_name = 'wide-resnet-'+str(args.depth)+'x'+str(args.widen_factor)
+    else:
+        print('Error : Network should be either [LeNet / VGGNet / ResNet / Wide_ResNet')
+        sys.exit(0)
+
+    return net, file_name
+
+def _get_test_adv(attack_method,epsilon):
+    # define parameter
+    parser = argparse.ArgumentParser(description='Train MNIST')
+    parser.add_argument('--seed', default=0, type=int)
+    parser.add_argument('--mode', default="adv", help="cln | adv")
+    parser.add_argument('--sigma', default=75, type=int, help='noise level')
+    parser.add_argument('--train_batch_size', default=50, type=int)
+    parser.add_argument('--test_batch_size', default=1000, type=int)
+    parser.add_argument('--log_interval', default=200, type=int)
+    parser.add_argument('--result_dir', default='results', type=str, help='directory of test dataset')
+    parser.add_argument('--monitor', default=False, type=bool, help='if monitor the training process')
+    parser.add_argument('--start_save', default=90, type=int,
+                        help='the threshold epoch which will start to save imgs data using in testing')
+
+    # attack
+    parser.add_argument("--attack_method", default="PGD", type=str,
+                        choices=['FGSM', 'PGD', 'Momentum', 'STA'])
+
+    parser.add_argument('--epsilon', type=float, default=8 / 255, help='if pd_block is used')
+
+    parser.add_argument('--dataset', default='cifar10', type=str, help='dataset = [cifar10/MNIST]')
+
+    # net
+    parser.add_argument('--net_type', default='wide-resnet', type=str, help='model')
+    parser.add_argument('--depth', default=28, type=int, help='depth of model')
+    parser.add_argument('--widen_factor', default=10, type=int, help='width of model')
+    parser.add_argument('--dropout', default=0.3, type=float, help='dropout_rate')
+    parser.add_argument('--num_classes', default=10, type=int)
+    args = parser.parse_args()
+
+    torch.manual_seed(args.seed)
+    use_cuda = torch.cuda.is_available()
+    device = torch.device("cuda" if use_cuda else "cpu")
+
+    # load basic data
+    # 测试包装的loader
+    test_loader = get_handled_cifar10_test_loader(num_workers=4, shuffle=False, batch_size=50)
+
+    # 加载网络模型
+    # Load checkpoint
+    print('| Resuming from checkpoint...')
+    assert os.path.isdir('checkpoint'), 'Error: No checkpoint directory found!'
+    _, file_name = getNetwork(args)
+    checkpoint = torch.load('./checkpoint/' + args.dataset + os.sep + file_name + '.t7')  # os.sep提供跨平台的分隔符
+    model = checkpoint['net']
+
+    #
+    model = model.to(device)
+    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+
+    # 定义对抗攻击类型：C&W
+    from advertorch.attacks import LinfPGDAttack
+    if attack_method == "PGD":
+        adversary = LinfPGDAttack(
+            model, loss_fn=nn.CrossEntropyLoss(reduction="sum"), eps=epsilon,
+            nb_iter=40, eps_iter=0.01, rand_init=True, clip_min=0.0, clip_max=1.0,
+            targeted=False)
+    elif attack_method == "FGSM":
+        adversary = GradientSignAttack(
+            model, loss_fn=nn.CrossEntropyLoss(reduction="sum"),
+            clip_min=0.0, clip_max=1.0, eps=0.007, targeted=False)  # 先测试一下不含扰动范围限制的，FGSM的eps代表的是一般的eps_iter
+    elif attack_method == "Momentum":
+        adversary = MomentumIterativeAttack(
+            model, loss_fn=nn.CrossEntropyLoss(reduction="sum"), eps=epsilon,
+            nb_iter=40, decay_factor=1.0, eps_iter=1.0, clip_min=0.0, clip_max=1.0,
+            targeted=False, ord=np.inf)
+    elif attack_method == "STA":
+        adversary = SpatialTransformAttack(
+            model, num_classes=args.num_classes, loss_fn=nn.CrossEntropyLoss(reduction="sum"),
+            initial_const=0.05, max_iterations=1000, search_steps=1, confidence=0, clip_min=0.0, clip_max=1.0,
+            targeted=False, abort_early=True)  # 先测试一下不含扰动范围限制的
+
+    # generate for train.h5 | save as train_adv_attackMethod_epsilon
+    test_adv = []
+    test_true_target = []
+    for clndata, target in test_loader:
+        print("clndata:{}".format(clndata.size()))
+        clndata, target = clndata.to(device), target.to(device)
+        with ctx_noparamgrad_and_eval(model):
+            advdata = adversary.perturb(clndata, target)
+            test_adv.append(advdata.detach().cpu().numpy())
+        test_true_target.append(target.cpu().numpy())
+    test_adv = np.reshape(np.asarray(test_adv),[-1,3,32,32])
+    test_true_target = np.reshape(np.asarray(test_true_target),[-1])
+    print("test_adv.shape:{}".format(test_adv.shape))
+    print("test_true_target.shape:{}".format(test_true_target.shape))
+    del model
+
+    return test_adv, test_true_target
+
+def get_test_adv_loader(attack_method,epsilon):
+    #save file
+    if os.path.exists("data/test_adv_"+str(attack_method)+"_"+str(epsilon)+".h5"):
+        h5_store = h5py.File("data/test_adv_"+str(attack_method)+"_"+str(epsilon)+".h5", 'r')
+        test_data = h5_store['data'][:] # 通过切片得到np数组
+        test_true_target=h5_store['true_target'][:]
+        h5_store.close()
+    else:
+
+        test_data,test_true_target = _get_test_adv(attack_method,epsilon)
+        h5_store = h5py.File("data/test_adv_"+str(attack_method)+"_"+str(epsilon)+".h5", 'w')
+        h5_store.create_dataset('data' ,data= test_data)
+        h5_store.create_dataset('true_target',data=test_true_target)
+        h5_store.close()
+
+    # 生成dataset的包装类
+    train_data = torch.from_numpy(test_data)
+    train_target = torch.from_numpy(test_true_target)  # numpy转Tensor
+    train_dataset = CIFAR10Dataset(train_data, train_target)
+    del train_data,train_target
+    return DataLoader(dataset=train_dataset, num_workers=2, drop_last=True, batch_size=50,
+                  shuffle=False)
+
+#generate h5file for test data regarding specific attack
+def generate_attackh5(save_dir="data",attack_method="PGD",epsilon=8/255):
+    '''
+    :param attack_method:
+    :param epsilon:
+    :return: the name of file where (test_adv_data, test_true_lable) is stored
+    '''
+    file_name = "test_"+attack_method+"_"+epsilon+".h5"
+    file_path = os.path.join(save_dir,file_name)
+    if not os.exists(save_dir):
+        os.mkdir(save_dir)
+    else:
+        # get raw test data
+        data,target = get_test_raw_data()
+
+
 
 
 class CIFAR10Dataset(Dataset):
@@ -59,14 +222,6 @@ class CIFAR10Dataset(Dataset):
         return self.data.size(0)
 
 
-def show(x, title=None, cbar=False, figsize=None):
-    plt.figure(figsize=figsize)
-    plt.imshow(x, interpolation='nearest', cmap='gray')
-    if title:
-        plt.title(title)
-    if cbar:
-        plt.colorbar()
-    plt.show()
 
 
 def get_raw_cifar10_data(loader):
@@ -285,6 +440,33 @@ def datagenerator(data_dir='data/Train400', verbose=False):
     print('^_^-training data finished-^_^')
     return data
 
+def get_test_raw_data():
+    '''
+    :return: train_image ,  train_target  | tensor
+    '''
+    if os.path.exists("data/test.h5"):
+        h5_store = h5py.File("data/test.h5", 'r')
+        train_data = h5_store['data'][:] # 通过切片得到np数组
+        train_target = h5_store['target'][:]
+        h5_store.close()
+    else:
+        h5_store = h5py.File("data/test.h5", 'w')
+
+        transform = transforms.Compose([transforms.ToTensor()])
+        trainset = CIFAR10(root="./data", train=False, download=True, transform=transform)
+        train_loader = DataLoader(trainset, batch_size=batch_size, shuffle=False, num_workers=2)
+        train_data, train_target = get_raw_cifar10_data(train_loader)
+
+
+        h5_store.create_dataset('data' ,data= train_data)
+        h5_store.create_dataset('target',data = train_target)
+        h5_store.close()
+
+    # 生成dataset的包装类
+    train_data = torch.from_numpy(train_data)
+    train_target = torch.from_numpy(train_target)  # numpy转Tensor
+    return train_data,train_target
+
 def get_train_raw_data():
     '''
     :return: train_image ,  train_target  | tensor
@@ -319,10 +501,3 @@ if __name__ == '__main__':
     data,target = get_train_raw_data()
     print(data.shape)
     print(target.shape)
-
-#    print('Shape of result = ' + str(res.shape))
-#    print('Saving data...')
-#    if not os.path.exists(save_dir):
-#            os.mkdir(save_dir)
-#    np.save(save_dir+'clean_patches.npy', res)
-#    print('Done.')       

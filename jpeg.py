@@ -3,8 +3,11 @@ from PIL import Image
 import math
 import numpy as np
 import argparse
-from data_generator import CIFAR10Dataset,get_test_adv_loader
+from data_generator import *
 from torch.utils.data import  DataLoader
+import os
+import h5py
+import torch
 
 def load_quantization_table(component, qs=40):
     # Quantization Table for JPEG Standard: https://tools.ietf.org/html/rfc2435
@@ -108,7 +111,7 @@ def jpeg(npmat, component='jpeg', factor=50):
     npmat_decode = decode(cnt, coeff, component, factor)
     return npmat_decode
 
-def feature_distillation(image):
+def feature_distillation(image,args):
     # h5 -> *255 -> feature distillation -> /255 -> h5
     '''
     :param image: np.array | [BATCH_SIZE,C,H,W] | [0,1]
@@ -116,16 +119,18 @@ def feature_distillation(image):
     '''
     res = []
     for i in range(image.shape[0]):
-        image_npmat = np.transpose(np.array(image[i], dtype='float'),[2,0,1]) * 255
+        # print("image :{} 's shape:{}".format(i,image[i].shape))
+        image_npmat = np.transpose(np.array(image[i], dtype='float'),[1,2,0]) * 255
+        # print("image_npma.shape: {}".format(image_npmat.shape))
         image_uint8 = (image_npmat).astype('uint8')
         ycbcr = Image.fromarray(image_uint8, 'RGB').convert('YCbCr')
         npmat = np.array(ycbcr)
         npmat_jpeg = jpeg(npmat, component=args.component, factor=args.factor)
         image_obj = Image.fromarray(npmat_jpeg, 'YCbCr').convert('RGB')
-        image_obj = np.asarray(image_obj) / 255
+        image_obj = np.transpose(np.asarray(image_obj) / 255 ,[2,0,1]) # [C,H,W]
         res.append(image_obj)
     res = np.asarray(res)
-    print ("res.shape:{}".format(res.shape))
+    print ("feature_distillation handled with shape:{}".format(res.shape))
     res = np.reshape(res,[-1,3,32,32])
     return res
 
@@ -139,14 +144,16 @@ def main():
     parser.add_argument('--component', type=str, default='jpeg',
                         help='dnn-oriented or jpeg standard')
     parser.add_argument('--factor', type=int, default=50, help='compression factor')
-    parser.add_argument("--attack_method",type=str,choices=["PGD","FGSM","STA","Momentum"])
+    parser.add_argument("--attack_method",default = "PGD",type=str,choices=["PGD","FGSM","STA","Momentum"])
     parser.add_argument("--epsilon",type=float,default=8/255)
     args = parser.parse_args()
 
-    test_file_dir = os.path.join("data",args.attack_method,args.epsilon)
+
+    #load data
+    test_file_dir = os.path.join("data",args.attack_method,str(args.epsilon))
     if not os.path.exists(test_file_dir):
-        os.mkdir(test_file_dir)
-    test_file_path =  os.path.join("data",args.attack_method,args.epsilon,"test_denoiser.h5")
+        os.makedirs(test_file_dir) # make new dirs iteratively
+    test_file_path =  os.path.join("data",args.attack_method,str(args.epsilon),"test_denoiser.h5")
     if os.path.exists(test_file_path):
         print("%s already exists! = =" % test_file_path)
         h5_store = h5py.File(test_file_path,"r")
@@ -162,12 +169,13 @@ def main():
         denoised_data = []
         target_ = []
         testLoader = get_test_adv_loader(attack_method = args.attack_method,epsilon=args.epsilon)
-        for batch_idx,(data,target) in enumearte(testLoader):
-            denoised_data.append(feature_distillation(data))
-            target_.append(target)
+        for batch_idx,(data,target) in enumerate(testLoader):
+            denoised_data.append(feature_distillation(data.numpy(),args))
+            target_.append(target.numpy())
         denoised_data = np.reshape(denoised_data,[-1,3,32,32])
-        target_ = np.reshape(target_,[-1])
-        h5_stroe.create_dataset('data',data=denoised_data)
+        target_= np.reshape(target_,[-1])
+        # print("denoised data shape:{},  target shape:{}".format(denoised_data.shape,target_.shape))
+        h5_store.create_dataset('data',data=denoised_data)
         h5_store.create_dataset('target',data=target_)
         h5_store.close()
     denoised_data = torch.from_numpy(denoised_data)
@@ -175,8 +183,33 @@ def main():
 
     test_denoised_dataset=CIFAR10Dataset(denoised_data,target_)
     del denoised_data,target_
-    return DataLoader(dataset=test_denoised_dataset,drop_last=True,batch_size=50,shuffle=False)
+    test_loader =  DataLoader(dataset=test_denoised_dataset,drop_last=True,batch_size=50,shuffle=False)
 
+    # load network
+    print('| Resuming from checkpoint...')
+    assert os.path.isdir('checkpoint'), 'Error: No checkpoint directory found!'
+    _, file_name = getNetwork(args)
+    checkpoint = torch.load('./checkpoint/' + args.dataset + os.sep + file_name + '.t7')  # os.sep提供跨平台的分隔符
+    model = checkpoint['net']
+    model = model.to(device)
+
+    # evaluate
+    model.eval()
+    for epoch in range(5):
+        clncorrect_nodefence = 0
+        for denoised_data, target in test_loader:
+            denoised_data, target = denoised_data.to(device), target.to(device)
+            with torch.no_grad():
+                output = model(denoised_data.float())
+            pred = output.max(1, keepdim=True)[1]
+            clncorrect_nodefence += pred.eq(target.view_as(pred)).sum().item()  # item： to get the value of tensor
+        print('\nTest set with feature-dis defence epoch:{}'
+                  ' cln acc: {}/{} ({:.0f}%)\n'.format(epoch,
+                    clncorrect_nodefence, len(test_loader.dataset),
+                      100. * clncorrect_nodefence / len(test_loader.dataset)))
+        with open('./logs/' + args.attack_method + '@' + args.epsilon + '.txt', 'a+') as f:
+            f.write('epoch: % d succ_num: %d succ_rate: %f attack_method: %s epsilon: %f\n' % (
+            epoch, clncorrect_nodefence, 100. * clncorrect_nodefence / len(test_loader.dataset), args.attack_method, args.epsilon))
 
 if __name__ == '__main__':
     main()    
