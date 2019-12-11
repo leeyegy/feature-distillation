@@ -155,12 +155,9 @@ def feature_distillation(image,args,batch_idx,target):
         image_obj = Image.fromarray(npmat_jpeg, 'YCbCr').convert('RGB')
         image_obj.save(fd_file_path)
         tmp_image = Image.open(fd_file_path)
-
-        # res.append(transforms.ToTensor()(tmp_image).numpy())
-        res.append(transforms.ToTensor()(image_).numpy())
-
+        res.append(transforms.ToTensor()(tmp_image).numpy())
     res = np.asarray(res)
-    print ("feature_distillation handled with shape:{}".format(res.shape))
+    # print ("feature_distillation handled with shape:{}".format(res.shape))
     res = np.reshape(res,[-1,3,32,32])
     return res
 
@@ -197,7 +194,7 @@ def main():
     test_file_dir = os.path.join("data",args.attack_method,str(args.epsilon))
     if not os.path.exists(test_file_dir):
         os.makedirs(test_file_dir) # make new dirs iteratively
-    test_file_path =  os.path.join("data",args.attack_method,str(args.epsilon),"test_denoiser_1.h5")
+    test_file_path =  os.path.join("data",args.attack_method,str(args.epsilon),"test_denoiser.h5")
     if os.path.exists(test_file_path):
         print("%s already exists! = =" % test_file_path)
         h5_store = h5py.File(test_file_path,"r")
