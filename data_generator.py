@@ -70,36 +70,7 @@ def getNetwork(args):
 
     return net, file_name
 
-def _get_test_adv(attack_method,epsilon):
-    # define parameter
-    parser = argparse.ArgumentParser(description='Train MNIST')
-    parser.add_argument('--seed', default=0, type=int)
-    parser.add_argument('--mode', default="adv", help="cln | adv")
-    parser.add_argument('--sigma', default=75, type=int, help='noise level')
-    parser.add_argument('--train_batch_size', default=50, type=int)
-    parser.add_argument('--test_batch_size', default=1000, type=int)
-    parser.add_argument('--log_interval', default=200, type=int)
-    parser.add_argument('--result_dir', default='results', type=str, help='directory of test dataset')
-    parser.add_argument('--monitor', default=False, type=bool, help='if monitor the training process')
-    parser.add_argument('--start_save', default=90, type=int,
-                        help='the threshold epoch which will start to save imgs data using in testing')
-
-    # attack
-    parser.add_argument("--attack_method", default="PGD", type=str,
-                        choices=['FGSM', 'PGD', 'Momentum', 'STA'])
-
-    parser.add_argument('--epsilon', type=float, default=8 / 255, help='if pd_block is used')
-
-    parser.add_argument('--dataset', default='cifar10', type=str, help='dataset = [cifar10/MNIST]')
-
-    # net
-    parser.add_argument('--net_type', default='wide-resnet', type=str, help='model')
-    parser.add_argument('--depth', default=28, type=int, help='depth of model')
-    parser.add_argument('--widen_factor', default=10, type=int, help='width of model')
-    parser.add_argument('--dropout', default=0.3, type=float, help='dropout_rate')
-    parser.add_argument('--num_classes', default=10, type=int)
-    args = parser.parse_args()
-
+def _get_test_adv(attack_method,epsilon,args):
     torch.manual_seed(args.seed)
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda" if use_cuda else "cpu")
@@ -160,16 +131,19 @@ def _get_test_adv(attack_method,epsilon):
 
     return test_adv, test_true_target
 
-def get_test_adv_loader(attack_method,epsilon):
+def get_test_adv_loader(attack_method,epsilon,args):
     #save file
     if os.path.exists("data/test_adv_"+str(attack_method)+"_"+str(epsilon)+".h5"):
         h5_store = h5py.File("data/test_adv_"+str(attack_method)+"_"+str(epsilon)+".h5", 'r')
         test_data = h5_store['data'][:] # 通过切片得到np数组
-        test_true_target=h5_store['true_target'][:]
+        try:
+            test_true_target=h5_store['true_target'][:]
+        except KeyError:
+            test_true_target=h5_store['target'][:]
         h5_store.close()
     else:
 
-        test_data,test_true_target = _get_test_adv(attack_method,epsilon)
+        test_data,test_true_target = _get_test_adv(attack_method,epsilon,args)
         h5_store = h5py.File("data/test_adv_"+str(attack_method)+"_"+str(epsilon)+".h5", 'w')
         h5_store.create_dataset('data' ,data= test_data)
         h5_store.create_dataset('true_target',data=test_true_target)
