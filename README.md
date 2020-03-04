@@ -1,4 +1,4 @@
-# demo - how to start-up
+# emo - Start-up
 I have changed some source codes so that Feature-dis can be tested on dataset Cifar10.
 
 To run this code, you have to follow these three steps:
