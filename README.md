@@ -1,56 +1,20 @@
-# feature-distillation
+# demo - how to start-up
+I have changed some source codes so that Feature-dis can be tested on dataset Cifar10.
+
+To run this code, you have to follow these three steps:
+
+* 1. make a new directory named checkpoint/cifar10, and put a pre-trained network model file (wide-resnet-28x10.t7) in this new created directory.
+
+
+* 2. make a new directory named data, and put data files of Cifar10 here.
+
+* 3. run demo.sh
+
+
+
+# NOTICE feature-distillation
 
 This repository implements DNN-Oriented JPEG compression introduced in the following paper 
 
 [Feature Distillation: DNN-Oriented JPEG Compression Against Adversarial Examples](https://arxiv.org/abs/1803.05787)
 
-## Introduction
-
-![DNN-Oriented JPEG Compression][fig1]
-
-Figure 1: Diagram of DNN-Oriented JPEG compression
-
-## Usage
-
-```
-python jpeg.py --image fig/lena.png --component dnn
-```
-
-```
-usage: jpeg.py [-h] [--image IMAGE] [--component COMPONENT] [--factor FACTOR]
-optional arguments:
-  -h, --help            show this help message and exit
-  --image IMAGE         image name
-  --component COMPONENT
-                        dnn-oriented or jpeg standard
-  --factor FACTOR       compression factor
-```
-
-## Results
-
-![Compare][fig2]
-
-Figure 2: Standard JPEG compression (Q = 50)
-
-![Compare][fig3]
-
-Figure 3: DNN-Oriented JPEG compression (Q = 50)
-
-## TODO
-
-- [x] zigzag sorting
-- [ ] sorting by standard deviation
-- [ ] adversarial defense evaluation
-
-## Contribution
-
-If you find a bug, feel free to create an issue.
-
-## Reference
-+ [ghallak/jpeg-python](https://github.com/ghallak/jpeg-python)
-
-<!-- Links -->
-
-[fig1]: fig/fig1.png
-[fig2]: fig/compare1.png
-[fig3]: fig/compare2.png
