@@ -148,7 +148,7 @@ def main():
     parser.add_argument('--component', type=str, default='jpeg',
                         help='dnn-oriented or jpeg standard')
     parser.add_argument('--factor', type=int, default=50, help='compression factor')
-    parser.add_argument("--attack_method",default = "PGD",type=str,choices=["PGD","FGSM","STA","Momentum","none"])
+    parser.add_argument("--attack_method",default = "PGD",type=str,choices=["PGD","FGSM","STA","Momentum","none","CW","DeepFool"])
     parser.add_argument("--epsilon",type=float,default=8/255)
 
     parser.add_argument('--dataset', default='cifar10', type=str, help='dataset = [cifar10/MNIST]')
