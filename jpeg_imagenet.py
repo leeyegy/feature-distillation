@@ -137,55 +137,6 @@ def feature_distillation(image,args,batch_idx,target):
     res = np.reshape(res,[-1,3,32,32])
     return res
 
-# def feature_distillation(image,args,batch_idx,target):
-#     # h5 -> *255 -> feature distillation -> /255 -> h5
-#     '''
-#     :param image: np.array | [BATCH_SIZE,C,H,W] | [0,1]
-#     :return: np.array | [BATCH_SIZE,C,H,W] | [0,1]
-#     '''
-#     res = []
-#     for i in range(image.shape[0]):
-#         # print("image :{} 's shape:{}".format(i,image[i].shape))
-#         origin_file_dir = os.path.join("data/origin_img",str(batch_idx),str(i))
-#         fd_file_dir = os.path.join("data/fd_img",str(batch_idx),str(i))
-#         if not os.path.exists(origin_file_dir):
-#             os.makedirs(origin_file_dir)
-#         if not os.path.exists(fd_file_dir):
-#             os.makedirs(fd_file_dir)
-#         origin_file_path =os.path.join(origin_file_dir,str(target[i])+".png")
-#         fd_file_path=os.path.join(fd_file_dir,str(target[i])+".png")
-#
-#         # first version
-#         tmp_data = np.transpose(np.array(image[i], dtype='float'),[1,2,0])
-#         tmp_data = np.array(tmp_data, dtype='float')*255
-#         tmp_data = (tmp_data).astype('uint8')
-#         imsave(origin_file_path,tmp_data)
-#
-#         # # # second version
-#         # tmp_data = np.transpose(np.array(image[i], dtype='float'),[1,2,0])
-#         # tmp_data = np.array(tmp_data, dtype='float')*255
-#         # tmp_data = (tmp_data).astype('uint8')
-#         # tmp_data = transforms.ToPILImage()(tmp_data)
-#         # tmp_data.save(origin_file_path)
-#         #
-#         image_ = Image.open(origin_file_path)
-#         image_npmat = np.array(image_, dtype='float')
-#         print(np.max(image_npmat))
-#         # print("image_npma.shape: {}".format(image_npmat.shape))
-#         image_uint8 = (image_npmat).astype('uint8')
-#         # Image.fromarray(image_uint8, 'RGB').save("monitor/ori_%d.png"%i)
-#         ycbcr = Image.fromarray(image_uint8, 'RGB').convert('YCbCr')
-#         npmat = np.array(ycbcr)
-#         npmat_jpeg = jpeg(npmat, component=args.component, factor=args.factor)
-#         image_obj = Image.fromarray(npmat_jpeg, 'YCbCr').convert('RGB')
-#         image_obj.save(fd_file_path)
-#         tmp_image = Image.open(fd_file_path)
-#         res.append(transforms.ToTensor()(tmp_image).numpy())
-#     res = np.asarray(res)
-#     # print ("feature_distillation handled with shape:{}".format(res.shape))
-#     res = np.reshape(res,[-1,3,32,32])
-#     return res
-
 
 
 
@@ -197,7 +148,7 @@ def main():
     parser.add_argument('--component', type=str, default='jpeg',
                         help='dnn-oriented or jpeg standard')
     parser.add_argument('--factor', type=int, default=50, help='compression factor')
-    parser.add_argument("--attack_method",default = "PGD",type=str,choices=["PGD","FGSM","STA","Momentum","none","DeepFool","CW"])
+    parser.add_argument("--attack_method",default = "PGD",type=str,choices=["PGD","FGSM","STA","Momentum","none"])
     parser.add_argument("--epsilon",type=float,default=8/255)
 
     parser.add_argument('--dataset', default='cifar10', type=str, help='dataset = [cifar10/MNIST]')
@@ -211,16 +162,11 @@ def main():
     args = parser.parse_args()
 
 
-    # #fd data
-    # testLoader = get_test_adv_loader(attack_method=args.attack_method, epsilon=args.epsilon, args=args)
-    # for batch_idx, (data, target) in enumerate(testLoader):
-    #     feature_distillation(data.numpy(), args, batch_idx, target)
-
     #load data
-    test_file_dir = os.path.join("data",args.attack_method,str(args.epsilon))
+    test_file_dir = os.path.join("data","IMAGENET",args.attack_method,str(args.epsilon))
     if not os.path.exists(test_file_dir):
         os.makedirs(test_file_dir) # make new dirs iteratively
-    test_file_path =  os.path.join("data",args.attack_method,str(args.epsilon),"test_denoiser.h5")
+    test_file_path =  os.path.join("data","IMAGENET",args.attack_method,str(args.epsilon),"test_denoiser.h5")
     if os.path.exists(test_file_path):
         print("%s already exists! = =" % test_file_path)
         h5_store = h5py.File(test_file_path,"r")
@@ -238,12 +184,13 @@ def main():
         if args.attack_method == "none":
             testLoader = get_handled_cifar10_test_loader(batch_size=50, num_workers=2, shuffle=False)
         else:
-            testLoader = get_test_adv_loader(attack_method = args.attack_method,epsilon=args.epsilon,args=args)
+            testLoader = get_IMAGENET_test_adv_loader(attack_method = args.attack_method,epsilon=args.epsilon,args=args)
 
         for batch_idx,(data,target) in enumerate(testLoader):
+            print("{}/{} in feature-dis~".format(batch_idx,20))
             denoised_data.append(feature_distillation(data.numpy(),args,batch_idx,target))
             target_.append(target.numpy())
-        denoised_data = np.reshape(denoised_data,[-1,3,32,32])
+        denoised_data = np.reshape(denoised_data,[-1,3,224,224])
         target_= np.reshape(target_,[-1])
         # print("denoised data shape:{},  target shape:{}".format(denoised_data.shape,target_.shape))
         h5_store.create_dataset('data',data=denoised_data)
@@ -251,6 +198,7 @@ def main():
         h5_store.close()
     denoised_data = torch.from_numpy(denoised_data)
     target_ = torch.from_numpy(target_)
+    print("data:{}, target:{}".format(denoised_data.size(),target_.size()))
 
     test_denoised_dataset=CIFAR10Dataset(denoised_data,target_)
     del denoised_data,target_
@@ -259,9 +207,7 @@ def main():
     # load network
     print('| Resuming from checkpoint...')
     assert os.path.isdir('checkpoint'), 'Error: No checkpoint directory found!'
-    _, file_name = getNetwork(args)
-    checkpoint = torch.load('./checkpoint/' + args.dataset + os.sep + file_name + '.t7')  # os.sep提供跨平台的分隔符
-    model = checkpoint['net']
+    model = torch.load('./checkpoint/' +"resnet50_epoch_7.pth")  # os.sep提供跨平台的分隔符
     model = model.cuda()
 
 
@@ -274,14 +220,13 @@ def main():
             with torch.no_grad():
                 output = model(denoised_data.float())
             pred = output.max(1, keepdim=True)[1]
+            pred = pred.double()
+            target = target.double()
             clncorrect_nodefence += pred.eq(target.view_as(pred)).sum().item()  # item： to get the value of tensor
         print('\nTest set with feature-dis defence epoch:{}'
                   ' cln acc: {}/{} ({:.0f}%)\n'.format(epoch,
                     clncorrect_nodefence, len(test_denoised_loader.dataset),
                       100. * clncorrect_nodefence / len(test_denoised_loader.dataset)))
-        with open('./logs/' + args.attack_method + '@' + str(args.epsilon) + '.txt', 'a+') as f:
-            f.write('epoch: %d succ_num: %d succ_rate: %f attack_method: %s epsilon: %f\n' % (
-            epoch, clncorrect_nodefence, 100. * clncorrect_nodefence / len(test_denoised_loader.dataset), args.attack_method, args.epsilon))
 
 
     # evaluate

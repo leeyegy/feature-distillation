@@ -96,8 +96,8 @@ def _get_test_adv(attack_method,epsilon,args):
     if attack_method == "PGD":
         adversary = LinfPGDAttack(
             model, loss_fn=nn.CrossEntropyLoss(reduction="sum"), eps=epsilon,
-            nb_iter=40, eps_iter=0.01, rand_init=True, clip_min=0.0, clip_max=1.0,
-            targeted=False)
+            nb_iter=20, eps_iter=0.01, rand_init=True, clip_min=0.0, clip_max=1.0,
+            targeted=False) # 在topic_6中的设置nb_iters是40
     elif attack_method == "FGSM":
         adversary = GradientSignAttack(
             model, loss_fn=nn.CrossEntropyLoss(reduction="sum"),
@@ -112,6 +112,9 @@ def _get_test_adv(attack_method,epsilon,args):
             model, num_classes=args.num_classes, loss_fn=nn.CrossEntropyLoss(reduction="sum"),
             initial_const=0.05, max_iterations=1000, search_steps=1, confidence=0, clip_min=0.0, clip_max=1.0,
             targeted=False, abort_early=True)  # 先测试一下不含扰动范围限制的
+    else:
+        print("no implementation so far ~")
+        raise
 
     # generate for train.h5 | save as train_adv_attackMethod_epsilon
     test_adv = []
@@ -130,6 +133,30 @@ def _get_test_adv(attack_method,epsilon,args):
     del model
 
     return test_adv, test_true_target
+
+def get_IMAGENET_test_adv_loader(attack_method,epsilon,args):
+    file_name = "/home/Leeyegy/work_space/imagenet_adv/ImageNet_adv/data/test_ImageNet_1000_adv_"+str(attack_method)+"_"+str(epsilon)+".h5"
+    #save file
+    if os.path.exists(file_name):
+        print("load adv_file from :{}".format(file_name))
+        h5_store = h5py.File(file_name, 'r')
+        test_data = h5_store['data'][:] # 通过切片得到np数组
+        try:
+            test_true_target=h5_store['true_target'][:]
+        except KeyError:
+            test_true_target=h5_store['target'][:]
+        h5_store.close()
+    else:
+        print("no adv_file found in :{}".format(file_name))
+        raise
+
+    # 生成dataset的包装类
+    train_data = torch.from_numpy(test_data)
+    train_target = torch.from_numpy(test_true_target)  # numpy转Tensor
+    train_dataset = CIFAR10Dataset(train_data, train_target)
+    del train_data,train_target
+    return DataLoader(dataset=train_dataset, num_workers=2, drop_last=True, batch_size=50,
+                  shuffle=False)
 
 def get_test_adv_loader(attack_method,epsilon,args):
     #save file
