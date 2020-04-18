@@ -21,14 +21,12 @@
 import glob
 import cv2
 import os
-import pandas as pd
 import numpy as np
 # from multiprocessing import Pool
 from torch.utils.data import Dataset, DataLoader
 import torch
 import torchvision.transforms as transforms
 from torchvision.datasets import CIFAR10
-import matplotlib.pyplot as plt
 import h5py # 通过h5py读写hdf5文件
 import argparse
 from networks import  *
@@ -158,10 +156,13 @@ def get_IMAGENET_test_adv_loader(attack_method,epsilon,args):
     return DataLoader(dataset=train_dataset, num_workers=2, drop_last=True, batch_size=50,
                   shuffle=False)
 
+
 def get_test_adv_loader(attack_method,epsilon,args):
+    # base = "data/test_tiny_ImageNet_1000_adv_"
+    base = 'data/test_adv_'
     #save file
-    if os.path.exists("data/test_adv_"+str(attack_method)+"_"+str(epsilon)+".h5"):
-        h5_store = h5py.File("data/test_adv_"+str(attack_method)+"_"+str(epsilon)+".h5", 'r')
+    if os.path.exists(base+str(attack_method)+"_"+str(epsilon)+".h5"):
+        h5_store = h5py.File(base+str(attack_method)+"_"+str(epsilon)+".h5", 'r')
         test_data = h5_store['data'][:] # 通过切片得到np数组
         try:
             test_true_target=h5_store['true_target'][:]
@@ -169,9 +170,9 @@ def get_test_adv_loader(attack_method,epsilon,args):
             test_true_target=h5_store['target'][:]
         h5_store.close()
     else:
-
+        print("expected file not found in function  get_test_adv_loader")
         test_data,test_true_target = _get_test_adv(attack_method,epsilon,args)
-        h5_store = h5py.File("data/test_adv_"+str(attack_method)+"_"+str(epsilon)+".h5", 'w')
+        h5_store = h5py.File(base+str(attack_method)+"_"+str(epsilon)+".h5", 'w')
         h5_store.create_dataset('data' ,data= test_data)
         h5_store.create_dataset('true_target',data=test_true_target)
         h5_store.close()
@@ -275,6 +276,25 @@ def get_handled_cifar10_train_loader(batch_size, num_workers, shuffle=True):
     return DataLoader(dataset=train_dataset, num_workers=num_workers, drop_last=True, batch_size=batch_size,
                   shuffle=shuffle)
 
+def get_handled_tiny_imagenet_test_loader(batch_size, num_workers, shuffle=True):
+    assert not os.path.exists(os.path.join("data","test_tiny_ImageNet_1000.h5")) , "expected file not found : test_tiny_ImageNet_1000.h5 "
+
+    file_name = os.path.join("data","test_tiny_ImageNet_1000.h5")
+
+    h5_store = h5py.File(file_name, 'r')
+    train_data = h5_store['data'][:] # 通过切片得到np数组
+    train_target = h5_store['target'][:]
+    h5_store.close()
+    print("^_^ data loaded successfully from "+file_name)
+
+    train_data = torch.from_numpy(train_data)
+    train_target = torch.from_numpy(train_target)  # numpy转Tensor
+
+
+    train_dataset = CIFAR10Dataset(train_data, train_target)
+    del train_data,train_target
+    return DataLoader(dataset=train_dataset, num_workers=num_workers, drop_last=True, batch_size=batch_size,
+                      shuffle=shuffle)
 
 def get_handled_cifar10_test_loader(batch_size, num_workers, shuffle=True):
     if os.path.exists("data/test.h5"):

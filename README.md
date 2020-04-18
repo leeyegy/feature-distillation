@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 # demo - how to start-up
+=======
+# Demo - Start-up
+>>>>>>> 4f9a70bfec15a9e143ff83d1f657a2558121f534
 I have changed some source codes so that Feature-dis can be tested on dataset Cifar10.
 
 To run this code, you have to follow these three steps:

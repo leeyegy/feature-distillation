@@ -136,54 +136,6 @@ def feature_distillation(image,args,batch_idx,target):
     res = np.reshape(res,[-1,3,32,32])
     return res
 
-# def feature_distillation(image,args,batch_idx,target):
-#     # h5 -> *255 -> feature distillation -> /255 -> h5
-#     '''
-#     :param image: np.array | [BATCH_SIZE,C,H,W] | [0,1]
-#     :return: np.array | [BATCH_SIZE,C,H,W] | [0,1]
-#     '''
-#     res = []
-#     for i in range(image.shape[0]):
-#         # print("image :{} 's shape:{}".format(i,image[i].shape))
-#         origin_file_dir = os.path.join("data/origin_img",str(batch_idx),str(i))
-#         fd_file_dir = os.path.join("data/fd_img",str(batch_idx),str(i))
-#         if not os.path.exists(origin_file_dir):
-#             os.makedirs(origin_file_dir)
-#         if not os.path.exists(fd_file_dir):
-#             os.makedirs(fd_file_dir)
-#         origin_file_path =os.path.join(origin_file_dir,str(target[i])+".png")
-#         fd_file_path=os.path.join(fd_file_dir,str(target[i])+".png")
-#
-#         # first version
-#         tmp_data = np.transpose(np.array(image[i], dtype='float'),[1,2,0])
-#         tmp_data = np.array(tmp_data, dtype='float')*255
-#         tmp_data = (tmp_data).astype('uint8')
-#         imsave(origin_file_path,tmp_data)
-#
-#         # # # second version
-#         # tmp_data = np.transpose(np.array(image[i], dtype='float'),[1,2,0])
-#         # tmp_data = np.array(tmp_data, dtype='float')*255
-#         # tmp_data = (tmp_data).astype('uint8')
-#         # tmp_data = transforms.ToPILImage()(tmp_data)
-#         # tmp_data.save(origin_file_path)
-#         #
-#         image_ = Image.open(origin_file_path)
-#         image_npmat = np.array(image_, dtype='float')
-#         print(np.max(image_npmat))
-#         # print("image_npma.shape: {}".format(image_npmat.shape))
-#         image_uint8 = (image_npmat).astype('uint8')
-#         # Image.fromarray(image_uint8, 'RGB').save("monitor/ori_%d.png"%i)
-#         ycbcr = Image.fromarray(image_uint8, 'RGB').convert('YCbCr')
-#         npmat = np.array(ycbcr)
-#         npmat_jpeg = jpeg(npmat, component=args.component, factor=args.factor)
-#         image_obj = Image.fromarray(npmat_jpeg, 'YCbCr').convert('RGB')
-#         image_obj.save(fd_file_path)
-#         tmp_image = Image.open(fd_file_path)
-#         res.append(transforms.ToTensor()(tmp_image).numpy())
-#     res = np.asarray(res)
-#     # print ("feature_distillation handled with shape:{}".format(res.shape))
-#     res = np.reshape(res,[-1,3,32,32])
-#     return res
 
 
 
@@ -196,7 +148,7 @@ def main():
     parser.add_argument('--component', type=str, default='jpeg',
                         help='dnn-oriented or jpeg standard')
     parser.add_argument('--factor', type=int, default=50, help='compression factor')
-    parser.add_argument("--attack_method",default = "PGD",type=str,choices=["PGD","FGSM","STA","Momentum","none","DeepFool","CW"])
+    parser.add_argument("--attack_method",default = "PGD",type=str,choices=["PGD","FGSM","STA","Momentum","none","CW","DeepFool"])
     parser.add_argument("--epsilon",type=float,default=8/255)
 
     parser.add_argument('--dataset', default='cifar10', type=str, help='dataset = [cifar10/MNIST]')
@@ -210,13 +162,8 @@ def main():
     args = parser.parse_args()
 
 
-    # #fd data
-    # testLoader = get_test_adv_loader(attack_method=args.attack_method, epsilon=args.epsilon, args=args)
-    # for batch_idx, (data, target) in enumerate(testLoader):
-    #     feature_distillation(data.numpy(), args, batch_idx, target)
-
     #load data
-    test_file_dir = os.path.join("data",args.attack_method,str(args.epsilon))
+    test_file_dir = os.path.join("data","tiny-imagenet",args.attack_method,str(args.epsilon))
     if not os.path.exists(test_file_dir):
         os.makedirs(test_file_dir) # make new dirs iteratively
 
@@ -237,7 +184,7 @@ def main():
         target_ = []
 
         if args.attack_method == "none":
-            testLoader = get_handled_cifar10_test_loader(batch_size=50, num_workers=2, shuffle=False)
+            testLoader = get_handled_tiny_imagenet_test_loader(batch_size=50, num_workers=2, shuffle=False)
         else:
             testLoader = get_test_adv_loader(attack_method = args.attack_method,epsilon=args.epsilon,args=args)
 
@@ -245,7 +192,7 @@ def main():
         for batch_idx,(data,target) in enumerate(testLoader):
             denoised_data.append(feature_distillation(data.numpy(),args,batch_idx,target))
             target_.append(target.numpy())
-        denoised_data = np.reshape(denoised_data,[-1,3,32,32])
+        denoised_data = np.reshape(denoised_data,[-1,3,64,64])
         target_= np.reshape(target_,[-1])
         # print("denoised data shape:{},  target shape:{}".format(denoised_data.shape,target_.shape))
         h5_store.create_dataset('data',data=denoised_data)
@@ -255,7 +202,6 @@ def main():
     target_ = torch.from_numpy(target_)
 
     test_denoised_dataset=CIFAR10Dataset(denoised_data,target_)
-    print("denoised_data:{}".format(denoised_data.size()))
     del denoised_data,target_
     test_denoised_loader =  DataLoader(dataset=test_denoised_dataset,drop_last=True,batch_size=50,shuffle=False)
 
@@ -263,12 +209,7 @@ def main():
     print('| Resuming from checkpoint...')
     assert os.path.isdir('checkpoint'), 'Error: No checkpoint directory found!'
     _, file_name = getNetwork(args)
-    # checkpoint = torch.load('./checkpoint/' + args.dataset + os.sep + file_name + '.t7')  # os.sep提供跨平台的分隔符
-    # model = checkpoint['net']
-    # model = torch.load("checkpoint/cifar10_resnet50_model_199.pth")
-    # model = torch.load("checkpoint/cifar10_vgg11_model_199.pth")
-    model = torch.load("checkpoint/cifar10_vgg16_model_299.pth")
-
+    model = torch.load('./checkpoint/resnet50_epoch_22.pth')  # os.sep提供跨平台的分隔符
     model = model.cuda()
 
 
