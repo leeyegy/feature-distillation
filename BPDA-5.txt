@@ -1,0 +1,10 @@
+^_^ data loaded successfully from test.h5
+| Resuming from checkpoint...
+| Wide-Resnet 28x10
+num_blocks:4.0,stride:1
+num_blocks:4.0,stride:2
+num_blocks:4.0,stride:2
+wide-resnet-28x10
+
+Test set with feature-dis defence against BPDA cln acc: 1131/10000 (11%)
+

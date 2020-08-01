@@ -196,7 +196,7 @@ def main():
     parser.add_argument('--component', type=str, default='jpeg',
                         help='dnn-oriented or jpeg standard')
     parser.add_argument('--factor', type=int, default=50, help='compression factor')
-    parser.add_argument("--attack_method",default = "PGD",type=str,choices=["PGD","FGSM","STA","Momentum","none","DeepFool","CW"])
+    parser.add_argument("--attack_method",default = "PGD",type=str,choices=["PGD","FGSM","STA","Momentum","none","DeepFool","CW","BIM"])
     parser.add_argument("--epsilon",type=float,default=8/255)
 
     parser.add_argument('--dataset', default='cifar10', type=str, help='dataset = [cifar10/MNIST]')
@@ -208,12 +208,6 @@ def main():
     parser.add_argument('--dropout', default=0.3, type=float, help='dropout_rate')
     parser.add_argument('--num_classes', default=10, type=int)
     args = parser.parse_args()
-
-
-    # #fd data
-    # testLoader = get_test_adv_loader(attack_method=args.attack_method, epsilon=args.epsilon, args=args)
-    # for batch_idx, (data, target) in enumerate(testLoader):
-    #     feature_distillation(data.numpy(), args, batch_idx, target)
 
     #load data
     test_file_dir = os.path.join("data",args.attack_method,str(args.epsilon))
@@ -263,11 +257,12 @@ def main():
     print('| Resuming from checkpoint...')
     assert os.path.isdir('checkpoint'), 'Error: No checkpoint directory found!'
     _, file_name = getNetwork(args)
-    # checkpoint = torch.load('./checkpoint/' + args.dataset + os.sep + file_name + '.t7')  # os.sep提供跨平台的分隔符
-    # model = checkpoint['net']
+    print(file_name)
+    checkpoint = torch.load('./checkpoint/' + args.dataset + os.sep + file_name + '.t7')  # os.sep提供跨平台的分隔符
+    model = checkpoint['net']
     # model = torch.load("checkpoint/cifar10_resnet50_model_199.pth")
     # model = torch.load("checkpoint/cifar10_vgg11_model_199.pth")
-    model = torch.load("checkpoint/cifar10_vgg16_model_299.pth")
+    # model = torch.load("checkpoint/cifar10_vgg16_model_299.pth")
 
     model = model.cuda()
 
