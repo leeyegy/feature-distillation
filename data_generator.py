@@ -132,29 +132,39 @@ def _get_test_adv(attack_method,epsilon,args):
 
     return test_adv, test_true_target
 
-def get_IMAGENET_test_adv_loader(attack_method,epsilon,args):
-    file_name = "/home/Leeyegy/work_space/imagenet_adv/ImageNet_adv/data/test_ImageNet_1000_adv_"+str(attack_method)+"_"+str(epsilon)+".h5"
-    #save file
-    if os.path.exists(file_name):
-        print("load adv_file from :{}".format(file_name))
-        h5_store = h5py.File(file_name, 'r')
-        test_data = h5_store['data'][:] # 通过切片得到np数组
-        try:
-            test_true_target=h5_store['true_target'][:]
-        except KeyError:
-            test_true_target=h5_store['target'][:]
-        h5_store.close()
-    else:
-        print("no adv_file found in :{}".format(file_name))
-        raise
-
-    # 生成dataset的包装类
-    train_data = torch.from_numpy(test_data)
-    train_target = torch.from_numpy(test_true_target)  # numpy转Tensor
-    train_dataset = CIFAR10Dataset(train_data, train_target)
-    del train_data,train_target
-    return DataLoader(dataset=train_dataset, num_workers=2, drop_last=True, batch_size=50,
-                  shuffle=False)
+# <<<<<<< HEAD
+# def get_IMAGENET_test_adv_loader(attack_method,epsilon,args):
+#     file_name = "/home/Leeyegy/work_space/imagenet_adv/ImageNet_adv/data/test_ImageNet_1000_adv_"+str(attack_method)+"_"+str(epsilon)+".h5"
+#     #save file
+#     if os.path.exists(file_name):
+#         print("load adv_file from :{}".format(file_name))
+#         h5_store = h5py.File(file_name, 'r')
+# =======
+#
+# def get_test_adv_loader(attack_method,epsilon,args):
+#     base = "data/test_tiny_ImageNet_1000_adv_"
+#     #save file
+#     if os.path.exists(base+str(attack_method)+"_"+str(epsilon)+".h5"):
+#         h5_store = h5py.File(base+str(attack_method)+"_"+str(epsilon)+".h5", 'r')
+# # >>>>>>> 4f9a70bfec15a9e143ff83d1f657a2558121f534
+#         test_data = h5_store['data'][:] # 通过切片得到np数组
+#         try:
+#             test_true_target=h5_store['true_target'][:]
+#         except KeyError:
+#             test_true_target=h5_store['target'][:]
+#         h5_store.close()
+#     else:
+# # <<<<<<< HEAD
+#         print("no adv_file found in :{}".format(file_name))
+#         raise
+#
+#     # 生成dataset的包装类
+#     train_data = torch.from_numpy(test_data)
+#     train_target = torch.from_numpy(test_true_target)  # numpy转Tensor
+#     train_dataset = CIFAR10Dataset(train_data, train_target)
+#     del train_data,train_target
+#     return DataLoader(dataset=train_dataset, num_workers=2, drop_last=True, batch_size=50,
+#                   shuffle=False)
 
 
 def get_test_adv_loader(attack_method,epsilon,args):
@@ -170,6 +180,8 @@ def get_test_adv_loader(attack_method,epsilon,args):
             test_true_target=h5_store['target'][:]
         h5_store.close()
     else:
+# =======
+# >>>>>>> 4f9a70bfec15a9e143ff83d1f657a2558121f534
         print("expected file not found in function  get_test_adv_loader")
         test_data,test_true_target = _get_test_adv(attack_method,epsilon,args)
         h5_store = h5py.File(base+str(attack_method)+"_"+str(epsilon)+".h5", 'w')

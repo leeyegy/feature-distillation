@@ -222,8 +222,11 @@ def main():
             with torch.no_grad():
                 output = model(denoised_data.float())
             pred = output.max(1, keepdim=True)[1]
+<<<<<<< HEAD
             pred = pred.double()
             target = target.double()
+=======
+>>>>>>> 4f9a70bfec15a9e143ff83d1f657a2558121f534
             clncorrect_nodefence += pred.eq(target.view_as(pred)).sum().item()  # item： to get the value of tensor
         print('\nTest set with feature-dis defence epoch:{}'
                   ' cln acc: {}/{} ({:.0f}%)\n'.format(epoch,
