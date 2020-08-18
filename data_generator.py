@@ -19,7 +19,7 @@
 # no need to run this code separately
 
 import glob
-import cv2
+# import cv2
 import os
 import numpy as np
 # from multiprocessing import Pool
@@ -169,7 +169,7 @@ def _get_test_adv(attack_method,epsilon,args):
 
 def get_test_adv_loader(attack_method,epsilon,args):
     # base = "data/test_tiny_ImageNet_1000_adv_"
-    base = 'data/test_adv_'
+    base = '../../topic_10_ddid/ddid/ddid-python/data/new_test_adv_'
     #save file
     if os.path.exists(base+str(attack_method)+"_"+str(epsilon)+".h5"):
         h5_store = h5py.File(base+str(attack_method)+"_"+str(epsilon)+".h5", 'r')
@@ -180,8 +180,6 @@ def get_test_adv_loader(attack_method,epsilon,args):
             test_true_target=h5_store['target'][:]
         h5_store.close()
     else:
-# =======
-# >>>>>>> 4f9a70bfec15a9e143ff83d1f657a2558121f534
         print("expected file not found in function  get_test_adv_loader")
         test_data,test_true_target = _get_test_adv(attack_method,epsilon,args)
         h5_store = h5py.File(base+str(attack_method)+"_"+str(epsilon)+".h5", 'w')

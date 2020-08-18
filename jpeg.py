@@ -210,7 +210,8 @@ def main():
     args = parser.parse_args()
 
     #load data
-    test_file_dir = os.path.join("data",args.attack_method,str(args.epsilon))
+
+    test_file_dir = os.path.join("data","new_"+args.attack_method,str(args.epsilon))
     if not os.path.exists(test_file_dir):
         os.makedirs(test_file_dir) # make new dirs iteratively
 
@@ -258,9 +259,10 @@ def main():
     assert os.path.isdir('checkpoint'), 'Error: No checkpoint directory found!'
     _, file_name = getNetwork(args)
     print(file_name)
-    checkpoint = torch.load('./checkpoint/' + args.dataset + os.sep + file_name + '.t7')  # os.sep提供跨平台的分隔符
-    model = checkpoint['net']
-    # model = torch.load("checkpoint/cifar10_resnet50_model_199.pth")
+#    checkpoint = torch.load('./checkpoint/' + args.dataset + os.sep + file_name + '.t7')  # os.sep提供跨平台的分隔符
+#    model = checkpoint['net']
+    model = torch.load("../../topic_10_ddid/ddid/ddid-python/checkpoint/cifar10_PGD_8_wideres_model_101.pth")
+ # model = torch.load("checkpoint/cifar10_resnet50_model_199.pth")
     # model = torch.load("checkpoint/cifar10_vgg11_model_199.pth")
     # model = torch.load("checkpoint/cifar10_vgg16_model_299.pth")
 
@@ -283,9 +285,6 @@ def main():
                   ' cln acc: {}/{} ({:.0f}%)\n'.format(epoch,
                     clncorrect_nodefence, len(test_denoised_loader.dataset),
                       100. * clncorrect_nodefence / len(test_denoised_loader.dataset)))
-        with open('./logs/' + args.attack_method + '@' + str(args.epsilon) + '.txt', 'a+') as f:
-            f.write('epoch: %d succ_num: %d succ_rate: %f attack_method: %s epsilon: %f\n' % (
-            epoch, clncorrect_nodefence, 100. * clncorrect_nodefence / len(test_denoised_loader.dataset), args.attack_method, args.epsilon))
 
 
 if __name__ == '__main__':
